@@ -1,1 +1,17 @@
 venv/
+# ─── SECRETS & KEYS ───
+.env
+
+# ─── DATA & CACHE VAULTS ───
+# Stops heavy telemetry, raw json feeds, and downloaded mp3s from bloating GitHub
+data/f1_cache/
+data/openf1_cache/
+data/audio_temp/
+data/processed/
+
+# ─── PYTHON RUNTIMES ───
+# Ignores your local virtual environment libraries and compiled byte code
+__pycache__/
+*.pyc
+venv/
+.venv/

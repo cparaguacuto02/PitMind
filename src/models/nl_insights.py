@@ -7,7 +7,6 @@ def generate_engineer_debrief(
     driver: str, 
     track: str, 
     stress_score: float, 
-    fatigue_index: float, 
     radio_summary: str
 ) -> str:
     """
@@ -46,7 +45,6 @@ Analyze the following telemetry and biometric ML predictions for {driver} at {tr
 
 DATA METRICS:
 - Overall Stress Score: {stress_score}/100
-- Cumulative Fatigue Index: {fatigue_index}/100
 - Radio Transcript Highlights: "{radio_summary}"
 
 RACE ENGINEER SUMMARY:"""
@@ -69,7 +67,6 @@ if __name__ == "__main__":
         driver="HAM",
         track="Monaco",
         stress_score=88.5,
-        fatigue_index=72.1,
         radio_summary="I have zero grip, the rears are gone."
     )
     print("\n🏎️ PITMIND ENGINEER DEBRIEF:")

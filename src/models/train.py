@@ -1,45 +1,78 @@
 import os
 import joblib
 import pandas as pd
-import numpy as np
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error
 
-def calculate_stress_index(live_df: pd.DataFrame) -> pd.DataFrame:
+def train_baseline_model(historical_df: pd.DataFrame, output_dir: str = "src/models/saved_weights"):
     """
-    Evaluates live telemetry to calculate cognitive overload.
+    Trains a Random Forest model to learn a driver's baseline heart rate 
+    based on the physical load (speed, braking, g-forces).
     """
-    model_path = "src/models/saved_weights/physical_hr_baseline.pkl"
-    if not os.path.exists(model_path):
-        raise FileNotFoundError("Trained model not found. Run train.py first!")
+    if historical_df.empty:
+        raise ValueError("Cannot train on an empty dataframe.")
         
-    # 1. Load the trained brain
-    model = joblib.load(model_path)
+    print("🧠 Initializing Random Forest Training Sequence...")
     
-    # 2. Extract the features it needs to make a prediction
-    physical_features = ['speed_kmh', 'throttle_pct', 'brake_active', 'g_force_longitudinal', 'g_force_lat']
-    X_live = live_df[physical_features]
+    # 1. Define the features (Inputs) and target (Output)
+    features = ['speed_kmh', 'throttle_pct', 'brake_active', 'g_force_longitudinal', 'g_force_lat']
+    target = 'heart_rate'
     
-    # 3. Predict the Baseline (What the HR *should* be physically)
-    predicted_physical_hr = model.predict(X_live)
+    # Ensure all required columns exist
+    for col in features + [target]:
+        if col not in historical_df.columns:
+            raise KeyError(f"Missing required training column: {col}")
+            
+    X = historical_df[features]
+    y = historical_df[target]
     
-    output_df = live_df.copy()
-    output_df['predicted_base_hr'] = predicted_physical_hr
+    # 2. Split into training and validation sets
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     
-    # 4. Calculate the Delta (The Unexplained Stress)
-    # We use absolute difference. If HR is drastically higher OR lower than expected, it indicates stress/shock.
-    hr_residual = np.abs(output_df['heart_rate'] - output_df['predicted_base_hr'])
+    # 3. Build and Train the Random Forest Regressor
+    # We use a regressor because Heart Rate is a continuous number, not a category
+    rf_model = RandomForestRegressor(
+        n_estimators=100,      # Number of "trees" in the forest
+        max_depth=10,          # How complex each tree is allowed to get
+        random_state=42,
+        n_jobs=-1              # Use all CPU cores for faster training
+    )
     
-    # 5. Build the Final PitMind Stress Index (0 to 100 Scale)
-    # We combine the physiological anomaly (hr_residual) with the NLP vocal stress flag
+    print("🌲 Fitting Random Forest to historical telemetry...")
+    rf_model.fit(X_train, y_train)
     
-    # Base stress from the heart rate deviation
-    raw_stress = hr_residual * 50 
+    # 4. Evaluate the model's accuracy
+    predictions = rf_model.predict(X_test)
+    mse = mean_squared_error(y_test, predictions)
+    rmse = mse ** 0.5
+    print(f"✅ Training Complete! Model Error (RMSE): +/- {rmse:.2f} bpm")
     
-    # Apply a heavy multiplier if Whisper caught them yelling or using urgent keywords on the radio
-    if 'audio_urgency_flag' in output_df.columns:
-        nlp_multiplier = 1.0 + (output_df['audio_urgency_flag'] * 0.5) # +50% penalty for urgent radio calls
-        raw_stress = raw_stress * nlp_multiplier
-        
-    # Normalize the final score to a clean 0-100 gauge for the Streamlit UI
-    output_df['pitmind_stress_index'] = np.clip(raw_stress, 0, 100).round(1)
+    # 5. Save the trained model to the pickle file
+    os.makedirs(output_dir, exist_ok=True)
+    save_path = os.path.join(output_dir, "physical_hr_baseline.pkl")
+    joblib.dump(rf_model, save_path)
+    print(f"💾 Random Forest weights successfully saved to: {save_path}")
+
+# --- STANDALONE RUN ---
+if __name__ == "__main__":
+    import numpy as np
+    print("🧪 Generating synthetic telemetry data for baseline training...")
     
-    return output_df
+    # Create 200 rows of realistic fake telemetry to train the Random Forest
+    np.random.seed(42)
+    mock_data = pd.DataFrame({
+        'speed_kmh': np.random.uniform(80, 340, 200),
+        'throttle_pct': np.random.uniform(0, 100, 200),
+        'brake_active': np.random.choice([0, 1], 200),
+        'g_force_longitudinal': np.random.normal(0, 3, 200),
+        'g_force_lat': np.random.normal(0, 4, 200)
+    })
+    
+    # Synthesize what a human heart rate SHOULD look like under these physical loads
+    base_hr = 110
+    g_load = mock_data['g_force_longitudinal'].abs() + mock_data['g_force_lat'].abs()
+    mock_data['heart_rate'] = base_hr + (mock_data['speed_kmh'] * 0.05) + (g_load * 4)
+    
+    # Run the training pipeline!
+    train_baseline_model(mock_data)
